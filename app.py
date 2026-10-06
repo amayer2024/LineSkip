@@ -6,6 +6,7 @@ from flask import Flask, g, jsonify, request
 import config
 import db
 from auth import service as auth_service
+from passes import repository as passes_repo
 
 
 def require_auth(view):
@@ -36,10 +37,37 @@ def _bearer_token():
 def create_app():
     app = Flask(__name__)
     db.init_db()
+    # Seed sample venues on startup (idempotent) so the app is usable with no manual setup.
+    seed_conn = db.get_connection()
+    try:
+        passes_repo.seed_venues(seed_conn)
+    finally:
+        seed_conn.close()
 
     @app.get("/health")
     def health():
         return jsonify(status="ok")
+
+    @app.get("/venues")
+    def list_venues():
+        conn = db.get_connection()
+        try:
+            venues = passes_repo.list_venues(conn)
+        finally:
+            conn.close()
+        return jsonify([dict(v) for v in venues])
+
+    @app.get("/venues/<int:venue_id>/passes")
+    def list_venue_passes(venue_id):
+        conn = db.get_connection()
+        try:
+            venue = passes_repo.get_venue(conn, venue_id)
+            if venue is None:
+                return jsonify(error="venue not found"), 404
+            passes = passes_repo.list_pass_products(conn, venue_id)
+        finally:
+            conn.close()
+        return jsonify([dict(p) for p in passes])
 
     @app.post("/auth/register")
     def register():
