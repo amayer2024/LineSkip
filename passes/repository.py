@@ -34,6 +34,38 @@ def get_pass_product(conn, pass_product_id):
     ).fetchone()
 
 
+# --- purchases ------------------------------------------------------------
+
+def try_claim_unit(conn, pass_product_id):
+    """Atomically claim one unit of inventory. Returns True if a unit was available.
+
+    The WHERE clause checks stock and the SET increments it in one step, so two concurrent
+    buyers can never both claim the last unit (no read-then-write race).
+    """
+    cur = conn.execute(
+        """UPDATE pass_products
+              SET quantity_sold = quantity_sold + 1
+            WHERE id = ? AND quantity_sold < quantity_total""",
+        (pass_product_id,),
+    )
+    return cur.rowcount > 0
+
+
+def insert_purchase(conn, user_id, pass_product_id, venue_id, price_cents, code):
+    cur = conn.execute(
+        """INSERT INTO purchases
+               (user_id, pass_product_id, venue_id, price_cents_paid, status,
+                redemption_code, purchased_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?)""",
+        (user_id, pass_product_id, venue_id, price_cents, code, _now_iso()),
+    )
+    return cur.lastrowid
+
+
+def get_purchase(conn, purchase_id):
+    return conn.execute("SELECT * FROM purchases WHERE id = ?", (purchase_id,)).fetchone()
+
+
 # --- seed -----------------------------------------------------------------
 
 _SEED = [

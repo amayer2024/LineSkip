@@ -7,6 +7,7 @@ import config
 import db
 from auth import service as auth_service
 from passes import repository as passes_repo
+from passes import service as passes_service
 
 
 def require_auth(view):
@@ -97,6 +98,19 @@ def create_app():
     @require_auth
     def me():
         return jsonify(user_id=g.user_id)
+
+    @app.post("/passes/purchase")
+    @require_auth
+    def purchase_pass():
+        data = request.get_json(silent=True) or {}
+        conn = db.get_connection()
+        try:
+            result = passes_service.purchase(conn, g.user_id, data.get("pass_product_id"))
+        except passes_service.PassError as exc:
+            return jsonify(error=str(exc)), 400
+        finally:
+            conn.close()
+        return jsonify(result), 201
 
     return app
 
