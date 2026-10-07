@@ -70,3 +70,76 @@ def test_each_purchase_gets_a_unique_code(conn):
     user_id = _user(conn)
     codes = {passes.purchase(conn, user_id, product_id)["redemption_code"] for _ in range(5)}
     assert len(codes) == 5
+
+
+# --- redeem ---------------------------------------------------------------
+
+def test_redeem_marks_pass_redeemed(conn):
+    _, product_id = _make_product(conn)
+    user_id = _user(conn)
+    bought = passes.purchase(conn, user_id, product_id)
+
+    result = passes.redeem(conn, bought["redemption_code"])
+
+    assert result["status"] == "redeemed"
+    assert result["redeemed_at"] is not None
+
+
+def test_redeem_twice_is_rejected(conn):
+    _, product_id = _make_product(conn)
+    user_id = _user(conn)
+    bought = passes.purchase(conn, user_id, product_id)
+
+    passes.redeem(conn, bought["redemption_code"])
+    with pytest.raises(passes.PassError):
+        passes.redeem(conn, bought["redemption_code"])  # one-time use
+
+
+def test_redeem_unknown_code_raises(conn):
+    with pytest.raises(passes.PassError):
+        passes.redeem(conn, "NOPE0000")
+
+
+# --- refund ---------------------------------------------------------------
+
+def test_refund_marks_refunded_and_releases_stock(conn):
+    _, product_id = _make_product(conn, quantity_total=5)
+    user_id = _user(conn)
+    bought = passes.purchase(conn, user_id, product_id)
+    assert conn.execute(
+        "SELECT quantity_sold FROM pass_products WHERE id = ?", (product_id,)
+    ).fetchone()["quantity_sold"] == 1
+
+    result = passes.refund(conn, bought["id"], user_id)
+
+    assert result["status"] == "refunded"
+    assert conn.execute(
+        "SELECT quantity_sold FROM pass_products WHERE id = ?", (product_id,)
+    ).fetchone()["quantity_sold"] == 0  # unit returned to stock
+
+
+def test_refund_rejects_other_users_purchase(conn):
+    _, product_id = _make_product(conn)
+    owner = _user(conn)
+    bought = passes.purchase(conn, owner, product_id)
+    other = conn.execute(
+        "INSERT INTO users (email, password_hash, created_at) VALUES ('x@m.es','x','now')"
+    ).lastrowid
+    conn.commit()
+    with pytest.raises(passes.PassError):
+        passes.refund(conn, bought["id"], other)
+
+
+def test_refund_unknown_purchase_raises(conn):
+    user_id = _user(conn)
+    with pytest.raises(passes.PassError):
+        passes.refund(conn, 9999, user_id)
+
+
+def test_refund_rejects_already_redeemed_pass(conn):
+    _, product_id = _make_product(conn)
+    user_id = _user(conn)
+    bought = passes.purchase(conn, user_id, product_id)
+    passes.redeem(conn, bought["redemption_code"])
+    with pytest.raises(passes.PassError):
+        passes.refund(conn, bought["id"], user_id)

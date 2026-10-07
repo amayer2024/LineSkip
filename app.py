@@ -112,6 +112,41 @@ def create_app():
             conn.close()
         return jsonify(result), 201
 
+    @app.get("/passes/mine")
+    @require_auth
+    def my_passes():
+        conn = db.get_connection()
+        try:
+            rows = passes_repo.list_purchases_for_user(conn, g.user_id)
+        finally:
+            conn.close()
+        return jsonify([dict(r) for r in rows])
+
+    @app.post("/passes/redeem")
+    def redeem_pass():
+        # Open endpoint: the redemption code itself is the credential (models door staff scanning).
+        data = request.get_json(silent=True) or {}
+        conn = db.get_connection()
+        try:
+            result = passes_service.redeem(conn, data.get("code"))
+        except passes_service.PassError as exc:
+            return jsonify(error=str(exc)), 400
+        finally:
+            conn.close()
+        return jsonify(result)
+
+    @app.post("/passes/<int:purchase_id>/refund")
+    @require_auth
+    def refund_pass(purchase_id):
+        conn = db.get_connection()
+        try:
+            result = passes_service.refund(conn, purchase_id, g.user_id)
+        except passes_service.PassError as exc:
+            return jsonify(error=str(exc)), 400
+        finally:
+            conn.close()
+        return jsonify(result)
+
     return app
 
 

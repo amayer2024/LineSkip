@@ -66,6 +66,34 @@ def get_purchase(conn, purchase_id):
     return conn.execute("SELECT * FROM purchases WHERE id = ?", (purchase_id,)).fetchone()
 
 
+def get_purchase_by_code(conn, code):
+    return conn.execute(
+        "SELECT * FROM purchases WHERE redemption_code = ?", (code,)
+    ).fetchone()
+
+
+def list_purchases_for_user(conn, user_id):
+    return conn.execute(
+        "SELECT * FROM purchases WHERE user_id = ? ORDER BY id DESC", (user_id,)
+    ).fetchall()
+
+
+def set_status(conn, purchase_id, status, redeemed_at=None):
+    """Single writer for purchase status transitions."""
+    conn.execute(
+        "UPDATE purchases SET status = ?, redeemed_at = ? WHERE id = ?",
+        (status, redeemed_at, purchase_id),
+    )
+
+
+def release_unit(conn, pass_product_id):
+    """Give one unit back to inventory (the mirror of try_claim_unit, used by refunds)."""
+    conn.execute(
+        "UPDATE pass_products SET quantity_sold = quantity_sold - 1 WHERE id = ?",
+        (pass_product_id,),
+    )
+
+
 # --- seed -----------------------------------------------------------------
 
 _SEED = [
