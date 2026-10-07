@@ -65,6 +65,20 @@ def test_purchase_unknown_product_raises(conn):
         passes.purchase(conn, user_id, 9999)
 
 
+def test_purchase_records_an_analytics_event(conn):
+    """The seam: a successful purchase writes exactly one 'purchase' event (see ADR-2)."""
+    venue_id, product_id = _make_product(conn, price_cents=1500)
+    user_id = _user(conn)
+
+    passes.purchase(conn, user_id, product_id)
+
+    events = conn.execute("SELECT * FROM events").fetchall()
+    assert len(events) == 1
+    assert events[0]["event_type"] == "purchase"
+    assert events[0]["venue_id"] == venue_id
+    assert events[0]["amount_cents"] == 1500
+
+
 def test_each_purchase_gets_a_unique_code(conn):
     _, product_id = _make_product(conn, quantity_total=10)
     user_id = _user(conn)

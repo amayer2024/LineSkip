@@ -10,6 +10,7 @@ Only 'active' purchases can transition; 'redeemed' and 'refunded' are terminal.
 import secrets
 from datetime import datetime, timezone
 
+from analytics import service as analytics
 from passes import repository
 
 
@@ -44,6 +45,10 @@ def purchase(conn, user_id, pass_product_id):
     purchase_id = repository.insert_purchase(
         conn, user_id, pass_product_id, product["venue_id"], product["price_cents"], code
     )
+    conn.commit()
+
+    # The one and only coupling point to the Analytics domain (the seam — see ADR-2).
+    analytics.record_event(conn, product["venue_id"], "purchase", product["price_cents"])
     conn.commit()
 
     return {

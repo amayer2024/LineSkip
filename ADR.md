@@ -14,6 +14,24 @@ signal per §1b).
 Consequences: Every request handler is plain traceable Python, which is ideal for the comprehension
 check. The cost is writing request validation and SQL by hand instead of getting it for free.
 
+## 2. Scoping the two feature domains to be independently modularizable
+Date: 2026-10-06
+Status: Decided
+Context: The assignment requires two backend domains coupled as little as possible, each able to
+become its own microservice later. Passes (selling/redeeming passes) and Analytics (revenue
+reporting) clearly need to share sales data without becoming entangled.
+Decision: Analytics owns its own `events` table and reports only from it; the Passes `purchase()`
+reaches Analytics through a single call, `record_event()`, and nothing else. There is no foreign
+key between `events` and the Passes tables, and neither domain reads the other's tables.
+Alternatives considered: Let Analytics query the `purchases` table directly with SQL joins —
+rejected because it would bind Analytics to the Passes schema, so the two could never be split. A
+message broker / event bus — rejected as out of scope (§1c forbids brokers; this is one process),
+with the in-process `record_event()` call standing in for the future network boundary.
+Consequences: To extract Analytics into its own service later, I change the one `record_event()`
+call into an HTTP/queue message and point its reports at the events it already owns — I can point
+to that call as the exact seam. The cost now is a one-way in-process dependency (Passes imports
+Analytics at that single line).
+
 ## 3. SQLite data model for the Passes domain
 Date: 2026-10-06
 Status: Decided

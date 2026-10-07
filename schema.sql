@@ -47,3 +47,16 @@ CREATE TABLE IF NOT EXISTS purchases (
     purchased_at     TEXT NOT NULL,
     redeemed_at      TEXT
 );
+
+-- Analytics domain ---------------------------------------------------------
+-- Owned entirely by the Analytics domain. Deliberately has NO foreign key into
+-- venues/purchases: it stores its own copy of what it needs so Analytics never
+-- reads the Passes tables and the two domains can be separated later (see ADR-2).
+
+CREATE TABLE IF NOT EXISTS events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    venue_id     INTEGER NOT NULL,
+    event_type   TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL DEFAULT 0,
+    occurred_at  TEXT NOT NULL
+);
