@@ -5,6 +5,7 @@ from flask import Flask, g, jsonify, request
 
 import config
 import db
+from analytics import service as analytics_service
 from auth import service as auth_service
 from passes import repository as passes_repo
 from passes import service as passes_service
@@ -146,6 +147,48 @@ def create_app():
         finally:
             conn.close()
         return jsonify(result)
+
+    # --- Analytics reporting (read-only; open, like /venues) ---------------
+
+    @app.get("/analytics/revenue")
+    def analytics_revenue():
+        conn = db.get_connection()
+        try:
+            total = analytics_service.total_revenue(conn)
+        finally:
+            conn.close()
+        return jsonify(total_revenue_cents=total)
+
+    @app.get("/analytics/revenue/by-venue")
+    def analytics_revenue_by_venue():
+        conn = db.get_connection()
+        try:
+            rows = analytics_service.revenue_per_venue(conn)
+        finally:
+            conn.close()
+        return jsonify(rows)
+
+    @app.get("/analytics/venues/top")
+    def analytics_top_venues():
+        # Bad/missing ?n= falls back to 3 so a malformed query can't 500.
+        n = request.args.get("n", default=3, type=int)
+        if n is None or n < 1:
+            n = 3
+        conn = db.get_connection()
+        try:
+            rows = analytics_service.top_venues(conn, n)
+        finally:
+            conn.close()
+        return jsonify(rows)
+
+    @app.get("/analytics/revenue/by-day")
+    def analytics_revenue_by_day():
+        conn = db.get_connection()
+        try:
+            rows = analytics_service.revenue_per_day(conn)
+        finally:
+            conn.close()
+        return jsonify(rows)
 
     return app
 
