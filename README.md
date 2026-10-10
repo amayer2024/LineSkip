@@ -34,5 +34,34 @@ startup — no manual migration. Everything is configurable via environment vari
 
 Health check: `curl http://localhost:8000/health` → `{"status":"ok"}`.
 
+## Web UI
+
+With the server running, open <http://localhost:8000/> in a browser: browse venues, register/log
+in, buy a pass, view your passes (with redemption codes) and refund them, and see the revenue
+dashboard. The pages are a thin client over the JSON API — they store the login token in the
+browser and send it as `Authorization: Bearer <token>`, so there is no separate web-only auth path.
+
 ## Tests & coverage
-_(Coverage command and result added on Day 5 once the core logic is complete.)_
+
+Run the suite with coverage on the core logic (the two domain services plus auth):
+
+```bash
+pytest --cov=auth --cov=passes --cov=analytics --cov-report=term-missing
+```
+
+Latest result — **34 tests pass, 100% line coverage** on the measured modules:
+
+```
+Name                      Stmts   Miss  Cover
+---------------------------------------------
+analytics/repository.py      11      0   100%
+analytics/service.py         17      0   100%
+auth/service.py              42      0   100%
+passes/repository.py         38      0   100%
+passes/service.py            42      0   100%
+---------------------------------------------
+TOTAL                       150      0   100%
+```
+
+Coverage targets the domain/auth modules rather than `app.py`, because the Flask routes are thin
+glue and all business logic lives in the service and repository layers (see ADR-4).

@@ -50,3 +50,24 @@ tie Analytics to the Passes schema and break the independent-domain goal (see AD
 Consequences: Money math is exact and the oversell check is a trivial `quantity_sold >=
 quantity_total` comparison. Denormalizing `venue_id` costs a little duplication but lets purchases
 be reported on (and events recorded) without joining back through `pass_products`.
+
+## 4. Testing approach and what coverage measures
+Date: 2026-10-09
+Status: Decided
+Context: The grade is dominated by a closed-book oral check where I must explain my own code, and
+the assignment asks for ≥70% test coverage on the core logic with a stated, reproducible figure.
+The code is split into pure service modules (business rules), repository modules (SQL), and thin
+Flask routes (HTTP glue).
+Decision: Test the service and repository layers directly against a per-test temporary SQLite
+database (the `conn` fixture in `tests/conftest.py`), and measure coverage on `auth`, `passes`, and
+`analytics` only — not `app.py`. Each test drives one branch of the logic (e.g. sold-out, double
+redeem, refund-of-another-user, empty-report, seed idempotency). The documented command is
+`pytest --cov=auth --cov=passes --cov=analytics --cov-report=term-missing`.
+Alternatives considered: HTTP-level tests through the Flask test client — rejected because they are
+slower, mostly re-prove what the service tests already cover, and would pull framework glue into the
+coverage number, making it less meaningful. No coverage gate at all — rejected because the
+assignment wants a concrete, reproducible figure.
+Consequences: The tests exercise exactly the code I have to explain at the oral check, and the
+coverage number reflects real logic rather than routing boilerplate. Current result: 34 tests, 100%
+line coverage on the measured modules. The cost is that the thin routes are verified by hand (live
+`curl` / browser checks during development) rather than by automated HTTP tests.
