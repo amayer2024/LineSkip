@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Login · LineSkip{% endblock %}
+{% block content %}
+  <h1>Login or register</h1>
+  <form id="auth-form" class="form">
+    <label>Email <input type="email" id="email" required></label>
+    <label>Password <input type="password" id="password" minlength="8" required></label>
+    <div class="form-actions">
+      <button type="submit" data-mode="login">Login</button>
+      <button type="button" id="register-btn">Register</button>
+    </div>
+  </form>
+  <p id="auth-msg" class="msg"></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const form = document.getElementById("auth-form");
+  const msg = document.getElementById("auth-msg");
+
+  function creds() {
+    return {
+      email: document.getElementById("email").value,
+      password: document.getElementById("password").value,
+    };
+  }
+
+  async function login() {
+    const res = await authFetch("{{ url_for('login') }}", {
+      method: "POST",
+      body: JSON.stringify(creds()),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      Auth.set(data.token);
+      window.location.href = "{{ url_for('page_index') }}";
+    } else {
+      msg.className = "msg err";
+      msg.textContent = data.error || "Login failed.";
+    }
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    login();
+  });
+
+  document.getElementById("register-btn").addEventListener("click", async () => {
+    const res = await authFetch("{{ url_for('register') }}", {
+      method: "POST",
+      body: JSON.stringify(creds()),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      login();  // registered — log straight in
+    } else {
+      msg.className = "msg err";
+      msg.textContent = data.error || "Registration failed.";
+    }
+  });
+</script>
+{% endblock %}

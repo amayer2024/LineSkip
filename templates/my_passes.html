@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}My Passes · LineSkip{% endblock %}
+{% block content %}
+  <h1>My passes</h1>
+  <p id="passes-msg" class="msg"></p>
+  <div id="passes"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const container = document.getElementById("passes");
+  const msg = document.getElementById("passes-msg");
+
+  function euros(cents) { return "€" + (cents / 100).toFixed(2); }
+
+  async function refund(purchaseId) {
+    const res = await authFetch("/passes/" + purchaseId + "/refund", { method: "POST" });
+    const data = await res.json();
+    if (res.ok) {
+      load();
+    } else {
+      msg.className = "msg err";
+      msg.textContent = data.error || "Refund failed.";
+    }
+  }
+
+  async function load() {
+    if (!Auth.get()) {
+      window.location.href = "{{ url_for('page_login') }}";
+      return;
+    }
+    const res = await authFetch("{{ url_for('my_passes') }}");
+    if (!res.ok) {
+      msg.className = "msg err";
+      msg.textContent = "Could not load passes.";
+      return;
+    }
+    const passes = await res.json();
+    if (passes.length === 0) {
+      container.innerHTML = "<p>You have no passes yet.</p>";
+      return;
+    }
+    container.innerHTML = "";
+    passes.forEach((p) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML =
+        "<h3>Pass #" + p.id + "</h3>" +
+        "<p class='muted'>Status: " + p.status + "</p>" +
+        "<p>Code: <code>" + p.redemption_code + "</code></p>" +
+        "<p class='price'>" + euros(p.price_cents_paid) + "</p>";
+      if (p.status === "active") {
+        const btn = document.createElement("button");
+        btn.textContent = "Refund";
+        btn.addEventListener("click", () => refund(p.id));
+        card.appendChild(btn);
+      }
+      container.appendChild(card);
+    });
+  }
+
+  load();
+</script>
+{% endblock %}

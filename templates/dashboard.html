@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Revenue · LineSkip{% endblock %}
+{% block content %}
+  <h1>Revenue dashboard</h1>
+  <p class="muted">Reported entirely from the Analytics domain's own events table.</p>
+
+  <section>
+    <h2>Total revenue</h2>
+    <p class="big" id="total">—</p>
+  </section>
+
+  <section>
+    <h2>Revenue per venue</h2>
+    <table id="by-venue"><thead><tr><th>Venue</th><th>Revenue</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section>
+    <h2>Top venues</h2>
+    <table id="top"><thead><tr><th>Venue</th><th>Revenue</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section>
+    <h2>Revenue per day</h2>
+    <table id="by-day"><thead><tr><th>Day</th><th>Revenue</th></tr></thead><tbody></tbody></table>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function euros(cents) { return "€" + (cents / 100).toFixed(2); }
+
+  function fillTable(id, rows, keyCols) {
+    const tbody = document.querySelector("#" + id + " tbody");
+    tbody.innerHTML = "";
+    if (rows.length === 0) {
+      tbody.innerHTML = "<tr><td colspan='2' class='muted'>No data yet.</td></tr>";
+      return;
+    }
+    rows.forEach((r) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + r[keyCols[0]] + "</td><td>" + euros(r.revenue_cents) + "</td>";
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function getJson(url) {
+    const res = await fetch(url);
+    return res.json();
+  }
+
+  async function load() {
+    const total = await getJson("{{ url_for('analytics_revenue') }}");
+    document.getElementById("total").textContent = euros(total.total_revenue_cents);
+
+    fillTable("by-venue", await getJson("{{ url_for('analytics_revenue_by_venue') }}"), ["venue_id"]);
+    fillTable("top", await getJson("{{ url_for('analytics_top_venues') }}"), ["venue_id"]);
+    fillTable("by-day", await getJson("{{ url_for('analytics_revenue_by_day') }}"), ["day"]);
+  }
+
+  load();
+</script>
+{% endblock %}

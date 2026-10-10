@@ -1,7 +1,7 @@
 """LineSkip — Flask entrypoint. Single process, started by `python app.py` (deployment contract §7)."""
 from functools import wraps
 
-from flask import Flask, g, jsonify, request
+from flask import Flask, g, jsonify, render_template, request
 
 import config
 import db
@@ -49,6 +49,41 @@ def create_app():
     @app.get("/health")
     def health():
         return jsonify(status="ok")
+
+    # --- HTML pages (thin client over the JSON API; /venues* stays JSON) ----
+
+    @app.get("/")
+    def page_index():
+        conn = db.get_connection()
+        try:
+            venues = passes_repo.list_venues(conn)
+        finally:
+            conn.close()
+        return render_template("index.html", venues=venues)
+
+    @app.get("/venue/<int:venue_id>")
+    def page_venue(venue_id):
+        conn = db.get_connection()
+        try:
+            venue = passes_repo.get_venue(conn, venue_id)
+            if venue is None:
+                return render_template("venue.html", venue=None, passes=[]), 404
+            passes = passes_repo.list_pass_products(conn, venue_id)
+        finally:
+            conn.close()
+        return render_template("venue.html", venue=venue, passes=passes)
+
+    @app.get("/login")
+    def page_login():
+        return render_template("login.html")
+
+    @app.get("/my-passes")
+    def page_my_passes():
+        return render_template("my_passes.html")
+
+    @app.get("/dashboard")
+    def page_dashboard():
+        return render_template("dashboard.html")
 
     @app.get("/venues")
     def list_venues():

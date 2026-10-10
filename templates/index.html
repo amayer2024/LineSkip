@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Venues · LineSkip{% endblock %}
+{% block content %}
+  <h1>Madrid venues</h1>
+  <p class="muted">Buy a line-skip or cover pass and walk straight in.</p>
+
+  {% if venues %}
+    <div class="cards">
+      {% for v in venues %}
+        <a class="card" href="{{ url_for('page_venue', venue_id=v['id']) }}">
+          <h2>{{ v["name"] }}</h2>
+          <p class="muted">{{ v["address"] }}, {{ v["city"] }}</p>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>No venues yet.</p>
+  {% endif %}
+{% endblock %}

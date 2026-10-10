@@ -1,0 +1,86 @@
+:root {
+  --bg: #0e0e12;
+  --panel: #1a1a22;
+  --ink: #f2f2f5;
+  --muted: #9a9aa8;
+  --accent: #7c5cff;
+  --ok: #3ecf8e;
+  --err: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: var(--panel);
+  border-bottom: 1px solid #2a2a35;
+}
+
+.nav .brand { font-weight: 700; font-size: 1.2rem; color: var(--accent); text-decoration: none; }
+.nav-links a { color: var(--ink); text-decoration: none; margin-left: 1.25rem; }
+.nav-links a:hover { color: var(--accent); }
+
+.container { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+
+h1 { margin-top: 0; }
+.muted { color: var(--muted); }
+.price { font-weight: 700; font-size: 1.1rem; }
+.big { font-size: 2.5rem; font-weight: 700; color: var(--accent); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+
+.card {
+  display: block;
+  background: var(--panel);
+  border: 1px solid #2a2a35;
+  border-radius: 12px;
+  padding: 1rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+a.card:hover { border-color: var(--accent); }
+.card h2, .card h3 { margin: 0 0 .25rem; }
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: .5rem 1rem;
+  font-size: .95rem;
+  cursor: pointer;
+}
+button:hover { opacity: .9; }
+button:disabled { background: #44445a; cursor: not-allowed; }
+
+.form { display: grid; gap: 1rem; max-width: 360px; }
+.form label { display: grid; gap: .35rem; }
+.form input {
+  padding: .5rem;
+  border-radius: 8px;
+  border: 1px solid #2a2a35;
+  background: #12121a;
+  color: var(--ink);
+}
+.form-actions { display: flex; gap: .75rem; }
+
+table { width: 100%; border-collapse: collapse; margin-top: .5rem; }
+th, td { text-align: left; padding: .5rem .75rem; border-bottom: 1px solid #2a2a35; }
+
+code { background: #12121a; padding: .15rem .4rem; border-radius: 6px; }
+
+.msg { min-height: 1.2rem; }
+.msg.ok { color: var(--ok); }
+.msg.err { color: var(--err); }
+
+section { margin-bottom: 1.5rem; }

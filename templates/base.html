@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}LineSkip{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <nav class="nav">
+    <a class="brand" href="{{ url_for('page_index') }}">LineSkip</a>
+    <div class="nav-links">
+      <a href="{{ url_for('page_index') }}">Venues</a>
+      <a href="{{ url_for('page_dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('page_my_passes') }}" data-auth-only>My Passes</a>
+      <a href="{{ url_for('page_login') }}" data-guest-only>Login</a>
+      <a href="#" id="logout-link" data-auth-only>Logout</a>
+    </div>
+  </nav>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    // --- token helpers: the browser stores the Bearer token from /auth/login ---
+    const Auth = {
+      get: () => localStorage.getItem("ls_token"),
+      set: (t) => localStorage.setItem("ls_token", t),
+      clear: () => localStorage.removeItem("ls_token"),
+    };
+
+    // authFetch attaches the Bearer token so page JS hits the same API as any client.
+    function authFetch(url, options = {}) {
+      const headers = Object.assign({}, options.headers, {
+        "Content-Type": "application/json",
+      });
+      const token = Auth.get();
+      if (token) headers["Authorization"] = "Bearer " + token;
+      return fetch(url, Object.assign({}, options, { headers }));
+    }
+
+    // Show/hide nav links depending on whether a token is stored.
+    function refreshNav() {
+      const loggedIn = !!Auth.get();
+      document.querySelectorAll("[data-auth-only]").forEach(
+        (el) => (el.style.display = loggedIn ? "" : "none"));
+      document.querySelectorAll("[data-guest-only]").forEach(
+        (el) => (el.style.display = loggedIn ? "none" : ""));
+    }
+
+    const logout = document.getElementById("logout-link");
+    if (logout) logout.addEventListener("click", (e) => {
+      e.preventDefault();
+      Auth.clear();
+      window.location.href = "{{ url_for('page_index') }}";
+    });
+
+    refreshNav();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

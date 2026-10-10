@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{% if venue %}{{ venue["name"] }}{% else %}Not found{% endif %} · LineSkip{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('page_index') }}">&larr; All venues</a></p>
+  {% if not venue %}
+    <h1>Venue not found</h1>
+    <p class="muted">That venue doesn't exist.</p>
+  {% else %}
+  <h1>{{ venue["name"] }}</h1>
+  <p class="muted">{{ venue["address"] }}, {{ venue["city"] }}</p>
+
+  <h2>Passes</h2>
+  {% if passes %}
+    <div class="cards">
+      {% for p in passes %}
+        {% set sold_out = p["quantity_sold"] >= p["quantity_total"] %}
+        <div class="card">
+          <h3>{{ p["name"] }}</h3>
+          <p class="muted">{{ p["type"].replace("_", " ") }} · valid {{ p["valid_date"] }}</p>
+          <p class="price">&euro;{{ "%.2f"|format(p["price_cents"] / 100) }}</p>
+          <p class="muted">{{ p["quantity_total"] - p["quantity_sold"] }} of {{ p["quantity_total"] }} left</p>
+          <button class="buy-btn" data-product-id="{{ p['id'] }}" {% if sold_out %}disabled{% endif %}>
+            {% if sold_out %}Sold out{% else %}Buy{% endif %}
+          </button>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>No passes on sale for this venue.</p>
+  {% endif %}
+
+  <p id="buy-msg" class="msg"></p>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const msg = document.getElementById("buy-msg");
+
+  document.querySelectorAll(".buy-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!Auth.get()) {
+        window.location.href = "{{ url_for('page_login') }}";
+        return;
+      }
+      const productId = parseInt(btn.dataset.productId, 10);
+      const res = await authFetch("{{ url_for('purchase_pass') }}", {
+        method: "POST",
+        body: JSON.stringify({ pass_product_id: productId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        msg.className = "msg ok";
+        msg.textContent = "Bought! Redemption code: " + data.redemption_code;
+      } else {
+        msg.className = "msg err";
+        msg.textContent = data.error || "Purchase failed.";
+      }
+    });
+  });
+</script>
+{% endblock %}
