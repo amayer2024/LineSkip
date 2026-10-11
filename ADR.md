@@ -71,3 +71,24 @@ Consequences: The tests exercise exactly the code I have to explain at the oral 
 coverage number reflects real logic rather than routing boilerplate. Current result: 34 tests, 100%
 line coverage on the measured modules. The cost is that the thin routes are verified by hand (live
 `curl` / browser checks during development) rather than by automated HTTP tests.
+
+## 5. Deliberately not building real payment processing
+Date: 2026-10-11
+Status: Decided
+Context: Buying a pass is a paid transaction, so a product I could actually ship would eventually
+charge a card; I had to decide whether to integrate a payment gateway now or defer it.
+Decision: `purchase()` records the sale as a transaction (the price is copied into
+`purchases.price_cents_paid` and a redemption code is issued) but does not charge real money; a
+payment gateway is explicitly out of scope for this assignment.
+Alternatives considered: Integrating a real gateway such as Stripe or PayPal — rejected because it
+requires an external runtime dependency plus secret/API-key management, which is in tension with
+§7.6 ("no required external runtime dependency beyond a public API your use case genuinely needs")
+and the single-container contract, and it drags in PCI-compliance scope that teaches nothing about
+the DevOps modularization goal of this assignment. A fake in-app "wallet" balance — rejected as
+busywork that simulates payment without being real, adding a table and rules I would have to explain
+for no learning value.
+Consequences: The money path stays a clean integer-cents bookkeeping record that both domains
+already rely on (Passes stores it, Analytics reports on it), and the purchase flow is fully testable
+with no network calls or secrets. The cost is that "payment" is modelled, not executed; wiring in a
+real gateway — and its secrets, through the same environment-variable config approach in
+`config.py` — is deferred to when the app is actually deployed.
