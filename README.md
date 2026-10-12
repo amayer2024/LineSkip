@@ -34,6 +34,33 @@ startup — no manual migration. Everything is configurable via environment vari
 
 Health check: `curl http://localhost:8000/health` → `{"status":"ok"}`.
 
+## Deployment contract (§7) evidence
+
+Verified with the provided contract checker (`container/run.sh`), which builds the app with the
+root `Dockerfile` and checks the §7 output contract:
+
+```
+=== SDD Assignment 1 contract check ===
+==> Repository shape
+  PASS  one Dockerfile, one manifest (requirements.txt)
+==> Build from a clean context, no build args
+  PASS  image built
+  PASS  image size 232 MB
+==> Start on PORT=8000 and reach it from the host
+  PASS  HTTP 200 from http://localhost:8000/
+==> SQLite file under DATA_DIR
+  PASS  found in /data: lineskip.db
+==> Data persists, and a second boot does not re-seed
+  PASS  volume at /data persists
+  WARN  Could not read row counts, skipping the re-seed check.
+==> PORT override is honoured (not hardcoded)
+  PASS  HTTP 200 from http://localhost:9123/
+=== ALL CHECKS PASSED ===
+```
+
+(The one WARN is the checker skipping a row-count probe — the slim image has no `sqlite3` CLI for it
+to exec; seed idempotency is covered directly by `test_seed_venues_is_idempotent`.)
+
 ## Web UI
 
 With the server running, open <http://localhost:8000/> in a browser: browse venues, register/log
