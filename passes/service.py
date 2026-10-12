@@ -93,4 +93,10 @@ def refund(conn, purchase_id, user_id):
     repository.set_status(conn, purchase_id, "refunded")
     repository.release_unit(conn, purchase["pass_product_id"])
     conn.commit()
+
+    # Track the refund in Analytics through the same seam (see ADR-2). Revenue reports
+    # filter to 'purchase' events, so this records the refund without changing gross revenue.
+    analytics.record_event(conn, purchase["venue_id"], "refund", purchase["price_cents_paid"])
+    conn.commit()
+
     return dict(repository.get_purchase(conn, purchase_id))

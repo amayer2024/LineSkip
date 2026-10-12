@@ -34,8 +34,8 @@ number of passes) is a first-class concern rather than an afterthought.
 - **Analytics** — records a sales event on each purchase into its **own** `events` table and reports
   revenue (total, per-venue, top venues, per-day). It reads only its own table.
 
-The two are coupled through exactly one call (the "seam", see §3 and ADR-2), so they could later be
-split into separate services.
+The two are coupled through a single integration point — the `record_event()` function (the "seam",
+see §3 and ADR-2) — so they could later be split into separate services.
 
 ---
 
@@ -120,7 +120,7 @@ flowchart TD
     pass_routes --> pass_svc
     rpt_routes --> an_svc
 
-    pass_svc -. "the SEAM: one call<br/>record_event(venue, purchase, cents)" .-> an_svc
+    pass_svc -. "the SEAM: one function<br/>record_event() on purchase and refund" .-> an_svc
 
     pass_repo --> db[("SQLite<br/>DATA_DIR/lineskip.db")]
     an_repo --> db
@@ -130,10 +130,11 @@ flowchart TD
 **Request walk-through (buying a pass):** the browser POSTs to `/passes/purchase` with its Bearer
 token. `require_auth` resolves the token to a `user_id`. `passes.service.purchase()` loads the
 product, atomically claims one unit of inventory (`try_claim_unit`), inserts the purchase with a
-unique redemption code, commits, and then makes the **single** cross-domain call
-`analytics.record_event(venue_id, "purchase", price_cents)`. That dotted arrow is the only coupling
-between the domains and is the exact point that would become a network/queue message if Analytics
-were split into its own service later.
+unique redemption code, commits, and then calls
+`analytics.record_event(venue_id, "purchase", price_cents)`. The same function is the only way
+either domain talks to the other — `refund()` also calls it to record a `refund` event — so that
+one function (the dotted arrow) is the single coupling point that would become a network/queue
+message if Analytics were split into its own service later.
 
 ---
 

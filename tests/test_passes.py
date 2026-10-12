@@ -1,6 +1,7 @@
 """Tests for the Passes domain's core logic (purchase + oversell guard)."""
 import pytest
 
+from analytics import service as analytics
 from passes import repository
 from passes import service as passes
 
@@ -157,3 +158,19 @@ def test_refund_rejects_already_redeemed_pass(conn):
     passes.redeem(conn, bought["redemption_code"])
     with pytest.raises(passes.PassError):
         passes.refund(conn, bought["id"], user_id)
+
+
+def test_refund_records_a_refund_event(conn):
+    """A refund is tracked in Analytics as a 'refund' event (gross revenue is unaffected)."""
+    venue_id, product_id = _make_product(conn, price_cents=1500)
+    user_id = _user(conn)
+    bought = passes.purchase(conn, user_id, product_id)  # writes one 'purchase' event
+
+    passes.refund(conn, bought["id"], user_id)
+
+    refunds = conn.execute("SELECT * FROM events WHERE event_type = 'refund'").fetchall()
+    assert len(refunds) == 1
+    assert refunds[0]["venue_id"] == venue_id
+    assert refunds[0]["amount_cents"] == 1500
+    # Revenue report still counts only the purchase, so gross revenue is unchanged.
+    assert analytics.total_revenue(conn) == 1500
