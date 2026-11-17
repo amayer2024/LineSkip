@@ -94,3 +94,46 @@ already rely on (Passes stores it, Analytics reports on it), and the purchase fl
 with no network calls or secrets. The cost is that "payment" is modelled, not executed; wiring in a
 real gateway — and its secrets, through the same environment-variable config approach in
 `config.py` — is deferred to when the app is actually deployed.
+
+## 6. Splitting the monolith into two services along the ADR-2 seam
+Date: 2026-11-17
+Status: Decided
+Context: Assignment 2 requires the monolith to become two independently deployed services, one per
+feature domain, each with its own container and its own database, split along the seam named in
+ADR-2.
+Decision: Passes and Analytics are now separate Flask services. The in-process `record_event()`
+call became an HTTP POST from Passes to Analytics' `POST /events`, located through the
+`ANALYTICS_URL` environment variable (never a hardcoded host). Analytics owns the `events` table in
+its own database; Passes no longer contains it. Recording a sale is the cross-seam flow and it runs
+server-side, inside Passes' `purchase()`/`refund()`.
+Alternatives considered: Put the cross-seam call in the UI (client-side), rejected because recording
+a sale belongs with the write that causes it and at least one flow must cross the seam server-side.
+Keep Analytics in-process, rejected because it violates the database-per-service rule.
+Consequences: ADR-2 held exactly — the only coupling was that single `record_event` call, so the
+split changed one line into an HTTP request. The cost is a network hop that must tolerate failure
+(see the timeout and degrade-on-failure in ADR-6's seam client) and the loss of a foreign key across
+the seam (ADR-7).
+
+## 7. One SQL Server database per service, with versioned migrations
+Date: 2026-11-17
+Status: Decided
+Context: Assignment 1 created the SQLite schema on first boot. Assignment 2 moves to SQL Server with
+one database per service and requires versioned migrations that preserve existing data once a
+database holds rows.
+Decision: Each service owns its tables in its own SQL Server database (`passes`, `analytics`), each
+reached by its own login (`passes_user`, `analytics_user`) that `db/init.sql` scopes to that one
+database — so no service can read the other's data. The schema is defined by numbered files
+(`migrations/001_init.sql`, ...) applied in filename order on startup and recorded in a
+`schema_migrations` table, so each migration runs exactly once and a second boot applies nothing.
+SQL was ported from SQLite to T-SQL (`AUTOINCREMENT`->`IDENTITY`, `TEXT`->`NVARCHAR`, `LIMIT`->
+`OFFSET/FETCH`, `substr`->`SUBSTRING`). Forward-only.
+Alternatives considered: Keep schema-on-boot (A1), rejected because it cannot evolve a table that
+already holds data. Use an ORM / Alembic, rejected to keep the SQL raw and explainable, continuing
+the no-ORM choice of ADR-1.
+Consequences: Integrity lost at the seam — the old foreign key from `events` into the Passes tables
+is gone; `events` keeps a plain `venue_id` and referential integrity across the seam is deliberately
+not enforced (Analytics records whatever `venue_id` Passes sends). Recovery plan for a bad
+migration: migrations are forward-only and never edited once applied, so a mistake is corrected by a
+new migration; because each service runs at most one replica, startup migrations never race; if a
+migration corrupts data on Azure, restore the database from Azure SQL's automated point-in-time
+backup and deploy the corrective migration.

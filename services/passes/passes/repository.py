@@ -123,7 +123,7 @@ def seed_venues(conn, valid_date="2026-10-10"):
 
     Idempotent: safe to call on every startup (deployment contract §7 forbids manual setup).
     """
-    if conn.execute("SELECT 1 FROM venues LIMIT 1").fetchone() is not None:
+    if conn.execute("SELECT TOP 1 1 AS present FROM venues").fetchone() is not None:
         return
     now = _now_iso()
     for name, address, products in _SEED:

@@ -1,21 +1,46 @@
-"""Analytics service — Flask entrypoint. Owns the events table; exposes ingest + reports.
+"""Analytics service — Flask entrypoint. Owns the events table; ingest + revenue reports.
 
-POST /events is the seam target: in Assignment 2 the passes service calls it over HTTP
-instead of recording events in-process.
+POST /events is the seam target: the passes service calls it over HTTP on each purchase/refund.
 """
+import os
+import time
+
 import config
 import db
 import service as analytics_service
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
+from flask_cors import CORS
 
 
 def create_app():
     app = Flask(__name__)
-    db.init_db()
+    CORS(
+        app,
+        origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+        allow_headers=["Content-Type", "Authorization"],
+    )
+
+    db.init_db()  # apply migrations in order
+
+    @app.before_request
+    def _start_timer():
+        g._t0 = time.time()
+
+    @app.after_request
+    def _log(resp):
+        dur_ms = (time.time() - getattr(g, "_t0", time.time())) * 1000
+        print(f"{request.method} {request.path} {resp.status_code} {dur_ms:.0f}ms", flush=True)
+        return resp
 
     @app.get("/health")
     def health():
-        return jsonify(status="ok")
+        ok = db.can_reach_db()
+        body = {
+            "status": "ok" if ok else "error",
+            "db": "ok" if ok else "down",
+            "version": os.environ.get("GIT_SHA", "dev"),
+        }
+        return jsonify(body), (200 if ok else 503)
 
     @app.post("/events")
     def ingest_event():
@@ -28,6 +53,7 @@ def create_app():
                 data.get("event_type", "purchase"),
                 data.get("amount_cents", 0),
             )
+            conn.commit()
         finally:
             conn.close()
         return jsonify(id=event_id), 201

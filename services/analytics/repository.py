@@ -1,7 +1,8 @@
-"""Analytics domain: the SQL layer for the events table.
+"""Analytics domain: the SQL layer for the events table (SQL Server).
 
-This domain reads and writes ONLY the events table — never the Passes tables. That isolation is
-what lets it become a separate service later (see ADR-2).
+Reads and writes ONLY the events table — never the passes tables. That isolation is
+what lets it be its own service (ADR-2). Ported from SQLite: substr -> SUBSTRING,
+LIMIT -> OFFSET/FETCH, and GROUP BY on the expression (SQL Server can't group by an alias).
 """
 
 
@@ -43,7 +44,7 @@ def top_venues_by_revenue(conn, n):
               WHERE event_type = 'purchase'
            GROUP BY venue_id
            ORDER BY total DESC, venue_id
-              LIMIT ?""",
+          OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY""",
         (n,),
     ).fetchall()
 
@@ -51,9 +52,9 @@ def top_venues_by_revenue(conn, n):
 def revenue_by_day(conn):
     """Daily series: group on the YYYY-MM-DD slice of the ISO occurred_at string."""
     return conn.execute(
-        """SELECT substr(occurred_at, 1, 10) AS day, SUM(amount_cents) AS total
+        """SELECT SUBSTRING(occurred_at, 1, 10) AS day, SUM(amount_cents) AS total
                FROM events
               WHERE event_type = 'purchase'
-           GROUP BY day
+           GROUP BY SUBSTRING(occurred_at, 1, 10)
            ORDER BY day"""
     ).fetchall()

@@ -1,7 +1,10 @@
-"""Tests for the Passes domain's core logic (purchase + oversell guard)."""
+"""Tests for the Passes domain's core logic (purchase, oversell guard, redeem, refund).
+
+The analytics seam is now an HTTP call to a separate service, so these tests cover only
+the passes-owned behaviour; the cross-seam flow is covered by the integration test.
+"""
 import pytest
 
-from analytics import service as analytics
 from passes import repository
 from passes import service as passes
 
@@ -64,20 +67,6 @@ def test_purchase_unknown_product_raises(conn):
     user_id = _user(conn)
     with pytest.raises(passes.PassError):
         passes.purchase(conn, user_id, 9999)
-
-
-def test_purchase_records_an_analytics_event(conn):
-    """The seam: a successful purchase writes exactly one 'purchase' event (see ADR-2)."""
-    venue_id, product_id = _make_product(conn, price_cents=1500)
-    user_id = _user(conn)
-
-    passes.purchase(conn, user_id, product_id)
-
-    events = conn.execute("SELECT * FROM events").fetchall()
-    assert len(events) == 1
-    assert events[0]["event_type"] == "purchase"
-    assert events[0]["venue_id"] == venue_id
-    assert events[0]["amount_cents"] == 1500
 
 
 def test_each_purchase_gets_a_unique_code(conn):
@@ -158,19 +147,3 @@ def test_refund_rejects_already_redeemed_pass(conn):
     passes.redeem(conn, bought["redemption_code"])
     with pytest.raises(passes.PassError):
         passes.refund(conn, bought["id"], user_id)
-
-
-def test_refund_records_a_refund_event(conn):
-    """A refund is tracked in Analytics as a 'refund' event (gross revenue is unaffected)."""
-    venue_id, product_id = _make_product(conn, price_cents=1500)
-    user_id = _user(conn)
-    bought = passes.purchase(conn, user_id, product_id)  # writes one 'purchase' event
-
-    passes.refund(conn, bought["id"], user_id)
-
-    refunds = conn.execute("SELECT * FROM events WHERE event_type = 'refund'").fetchall()
-    assert len(refunds) == 1
-    assert refunds[0]["venue_id"] == venue_id
-    assert refunds[0]["amount_cents"] == 1500
-    # Revenue report still counts only the purchase, so gross revenue is unchanged.
-    assert analytics.total_revenue(conn) == 1500
