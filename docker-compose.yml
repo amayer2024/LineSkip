@@ -1,0 +1,62 @@
+name: lineskip
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64            # no arm64 image: on Apple Silicon enable Rosetta in Docker Desktop
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD}
+    volumes:
+      - sqldata:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # One-off job: creates one database and one login per service, then exits.
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      SA_PASSWORD: ${SA_PASSWORD}
+      PASSES_PWD: ${PASSES_PWD}
+      ANALYTICS_PWD: ${ANALYTICS_PWD}
+    volumes:
+      - ./db/init.sql:/init.sql:ro
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - /opt/mssql-tools18/bin/sqlcmd -C -b -S sqlserver -U sa -P "$$SA_PASSWORD" -i /init.sql -v PASSES_PWD="$$PASSES_PWD" ANALYTICS_PWD="$$ANALYTICS_PWD"
+
+  passes:
+    build: ./services/passes
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: mssql://passes_user:${PASSES_PWD}@sqlserver:1433/passes
+      ANALYTICS_URL: http://analytics:8000     # the service name on the compose network, not localhost
+      ANALYTICS_TIMEOUT_S: "2"
+      CORS_ORIGINS: ${UI_ORIGIN:-http://localhost:8080}
+    ports:
+      - "8001:8000"
+
+  analytics:
+    build: ./services/analytics
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: mssql://analytics_user:${ANALYTICS_PWD}@sqlserver:1433/analytics
+      CORS_ORIGINS: ${UI_ORIGIN:-http://localhost:8080}
+    ports:
+      - "8002:8000"
+
+volumes:
+  sqldata:

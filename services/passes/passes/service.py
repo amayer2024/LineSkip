@@ -10,7 +10,7 @@ Only 'active' purchases can transition; 'redeemed' and 'refunded' are terminal.
 import secrets
 from datetime import datetime, timezone
 
-from analytics import service as analytics
+import analytics_client
 from passes import repository
 
 
@@ -47,9 +47,9 @@ def purchase(conn, user_id, pass_product_id):
     )
     conn.commit()
 
-    # The one and only coupling point to the Analytics domain (the seam — see ADR-2).
-    analytics.record_event(conn, product["venue_id"], "purchase", product["price_cents"])
-    conn.commit()
+    # The seam: record the sale on the analytics service over HTTP (see ADR-6).
+    # Best-effort: if analytics is down the purchase still stands.
+    analytics_client.record_event(product["venue_id"], "purchase", product["price_cents"])
 
     return {
         "id": purchase_id,
@@ -94,9 +94,7 @@ def refund(conn, purchase_id, user_id):
     repository.release_unit(conn, purchase["pass_product_id"])
     conn.commit()
 
-    # Track the refund in Analytics through the same seam (see ADR-2). Revenue reports
-    # filter to 'purchase' events, so this records the refund without changing gross revenue.
-    analytics.record_event(conn, purchase["venue_id"], "refund", purchase["price_cents_paid"])
-    conn.commit()
+    # Same seam: record the refund (reports filter to 'purchase', so gross revenue is unchanged).
+    analytics_client.record_event(purchase["venue_id"], "refund", purchase["price_cents_paid"])
 
     return dict(repository.get_purchase(conn, purchase_id))

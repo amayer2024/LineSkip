@@ -1,14 +1,17 @@
-"""Shared test fixtures: a throwaway SQLite database per test, isolated via DATA_DIR."""
+"""Test fixtures. DB-backed tests need a reachable SQL Server via DATABASE_URL;
+they skip otherwise (CI gains a SQL Server service container in a later step)."""
+import os
+
 import pytest
 
 import db
 
 
 @pytest.fixture
-def conn(tmp_path, monkeypatch):
-    """A connection to a fresh, schema-initialized SQLite file under a temp DATA_DIR."""
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+def conn():
+    if not os.environ.get("DATABASE_URL") or not db.can_reach_db():
+        pytest.skip("No reachable SQL Server (set DATABASE_URL)")
     connection = db.get_connection()
-    db.init_db(connection)
+    db.run_migrations(connection)
     yield connection
     connection.close()
