@@ -1,0 +1,27 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Venues &middot; LineSkip</title><link rel="stylesheet" href="style.css"></head><body>
+<nav class="nav"><a class="brand" href="index.html">LineSkip</a><div class="nav-links"><a href="index.html">Venues</a><a href="dashboard.html">Dashboard</a><a href="my-passes.html" data-auth-only>My Passes</a><a href="login.html" data-guest-only>Login</a><a href="#" id="logout-link" data-auth-only>Logout</a></div></nav>
+<main class="container">
+  <h1>Madrid venues</h1>
+  <p class="muted">Buy a line-skip or cover pass and walk straight in.</p>
+  <div id="venues" class="cards"></div>
+  <p id="msg" class="muted"></p>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script>
+  (async () => {
+    try {
+      const res = await fetch(PASSES + "/venues");
+      const venues = await res.json();
+      const box = document.getElementById("venues");
+      if (!venues.length) { document.getElementById("msg").textContent = "No venues yet."; return; }
+      venues.forEach((v) => {
+        const a = document.createElement("a");
+        a.className = "card"; a.href = "venue.html?id=" + v.id;
+        a.innerHTML = "<h2>" + v.name + "</h2><p class='muted'>" + v.address + ", " + v.city + "</p>";
+        box.appendChild(a);
+      });
+    } catch (e) { document.getElementById("msg").textContent = "Could not reach the passes service."; }
+  })();
+</script></body></html>

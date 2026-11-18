@@ -1,0 +1,56 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Venue &middot; LineSkip</title><link rel="stylesheet" href="style.css"></head><body>
+<nav class="nav"><a class="brand" href="index.html">LineSkip</a><div class="nav-links"><a href="index.html">Venues</a><a href="dashboard.html">Dashboard</a><a href="my-passes.html" data-auth-only>My Passes</a><a href="login.html" data-guest-only>Login</a><a href="#" id="logout-link" data-auth-only>Logout</a></div></nav>
+<main class="container">
+  <p><a href="index.html">&larr; All venues</a></p>
+  <h1 id="venue-name">Venue</h1>
+  <p class="muted" id="venue-addr"></p>
+  <h2>Passes</h2>
+  <div id="passes" class="cards"></div>
+  <p id="buy-msg" class="msg"></p>
+</main>
+<script src="config.js"></script><script src="app.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const venueId = parseInt(params.get("id"), 10);
+  const msg = document.getElementById("buy-msg");
+
+  async function buy(productId) {
+    if (!Auth.get()) { location.href = "login.html"; return; }
+    const res = await authFetch(PASSES + "/passes/purchase", {
+      method: "POST", body: JSON.stringify({ pass_product_id: productId }),
+    });
+    const data = await res.json();
+    if (res.ok) { msg.className = "msg ok"; msg.textContent = "Bought! Redemption code: " + data.redemption_code; }
+    else { msg.className = "msg err"; msg.textContent = data.error || "Purchase failed."; }
+  }
+
+  (async () => {
+    // Venue name: the passes service exposes the list; find ours by id.
+    const venues = await (await fetch(PASSES + "/venues")).json();
+    const venue = venues.find((v) => v.id === venueId);
+    if (venue) {
+      document.getElementById("venue-name").textContent = venue.name;
+      document.getElementById("venue-addr").textContent = venue.address + ", " + venue.city;
+    }
+    const res = await fetch(PASSES + "/venues/" + venueId + "/passes");
+    if (!res.ok) { document.getElementById("passes").innerHTML = "<p>Venue not found.</p>"; return; }
+    const passes = await res.json();
+    const box = document.getElementById("passes");
+    if (!passes.length) { box.innerHTML = "<p>No passes on sale for this venue.</p>"; return; }
+    passes.forEach((p) => {
+      const soldOut = p.quantity_sold >= p.quantity_total;
+      const card = document.createElement("div"); card.className = "card";
+      card.innerHTML =
+        "<h3>" + p.name + "</h3>" +
+        "<p class='muted'>" + p.type.replace("_", " ") + " · valid " + p.valid_date + "</p>" +
+        "<p class='price'>" + euros(p.price_cents) + "</p>" +
+        "<p class='muted'>" + (p.quantity_total - p.quantity_sold) + " of " + p.quantity_total + " left</p>";
+      const btn = document.createElement("button");
+      btn.textContent = soldOut ? "Sold out" : "Buy"; btn.disabled = soldOut;
+      btn.addEventListener("click", () => buy(p.id));
+      card.appendChild(btn); box.appendChild(card);
+    });
+  })();
+</script></body></html>
