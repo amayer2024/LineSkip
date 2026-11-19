@@ -61,4 +61,4 @@ def test_verify_session_rejects_expired_token(conn):
     conn.execute("UPDATE sessions SET expires_at = ? WHERE token = ?", (past, token))
     conn.commit()
     assert auth.verify_session(conn, token) is None
-    assert conn.execute("SELECT 1 FROM sessions WHERE token = ?", (token,)).fetchone() is None
+    assert conn.execute("SELECT 1 AS present FROM sessions WHERE token = ?", (token,)).fetchone() is None
