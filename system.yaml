@@ -5,9 +5,7 @@
 student: amayer.ieu2024
 prefix: amayer-ieu2024
 
-# TODO: replace with the Storage account's "Primary endpoint" shown after
-# enabling Static website (format: https://<account>.z<NN>.web.core.windows.net/).
-public_url: https://amayerieu2024ui.REPLACE.web.core.windows.net/
+public_url: https://amayerieu2024ui.z28.web.core.windows.net/
 
 ui:
   path: ui
