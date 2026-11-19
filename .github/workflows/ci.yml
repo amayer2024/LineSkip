@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
+    branches-ignore: [main]   # on main, CD calls this workflow instead (no double run)
   pull_request:
+  workflow_call:              # invoked by cd.yml on push to main
 
 jobs:
   # --- Static checks: real errors, undefined names, unused imports ----------

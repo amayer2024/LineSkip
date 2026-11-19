@@ -1,0 +1,84 @@
+name: CD
+
+# Deploy only from main. CI (lint, specs, tests, image build+push) runs first
+# via workflow_call, then the images are rolled out to Azure Container Apps.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write      # let the called CI push images to GHCR
+  id-token: write      # OIDC federation for azure/login
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    env:
+      RG: ${{ vars.RESOURCE_GROUP }}
+      PREFIX: ${{ vars.PREFIX }}
+      UI_STORAGE: ${{ vars.UI_STORAGE }}
+      OWNER: amayer2024
+      PASSES_DB_PASSWORD: ${{ secrets.PASSES_DB_PASSWORD }}
+      ANALYTICS_DB_PASSWORD: ${{ secrets.ANALYTICS_DB_PASSWORD }}
+      SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure containerapp extension
+        run: az extension add --name containerapp --upgrade --only-show-errors
+
+      - name: Deploy analytics
+        run: |
+          SQL_FQDN="${PREFIX}-sql.database.windows.net"
+          az containerapp secret set -g "$RG" -n "${PREFIX}-analytics" \
+            --secrets "db-url=mssql://analytics_user:${ANALYTICS_DB_PASSWORD}@${SQL_FQDN}:1433/${PREFIX}-analytics-db"
+          az containerapp update -g "$RG" -n "${PREFIX}-analytics" \
+            --image "ghcr.io/${OWNER}/lineskip-analytics:${SHA}" \
+            --set-env-vars "DATABASE_URL=secretref:db-url" "GIT_SHA=${SHA}"
+
+      - name: Deploy passes
+        run: |
+          SQL_FQDN="${PREFIX}-sql.database.windows.net"
+          az containerapp secret set -g "$RG" -n "${PREFIX}-passes" \
+            --secrets "db-url=mssql://passes_user:${PASSES_DB_PASSWORD}@${SQL_FQDN}:1433/${PREFIX}-passes-db"
+          az containerapp update -g "$RG" -n "${PREFIX}-passes" \
+            --image "ghcr.io/${OWNER}/lineskip-passes:${SHA}" \
+            --set-env-vars "DATABASE_URL=secretref:db-url" "GIT_SHA=${SHA}"
+
+      - name: Write ui/config.js and upload to the static website
+        run: |
+          PASSES_FQDN=$(az containerapp show -g "$RG" -n "${PREFIX}-passes" --query properties.configuration.ingress.fqdn -o tsv)
+          ANALYTICS_FQDN=$(az containerapp show -g "$RG" -n "${PREFIX}-analytics" --query properties.configuration.ingress.fqdn -o tsv)
+          printf 'window.LINESKIP_CONFIG = {\n  passesUrl: "https://%s",\n  analyticsUrl: "https://%s"\n};\n' "$PASSES_FQDN" "$ANALYTICS_FQDN" > ui/config.js
+          echo "--- ui/config.js ---"; cat ui/config.js
+          KEY=$(az storage account keys list -g "$RG" -n "$UI_STORAGE" --query "[0].value" -o tsv)
+          az storage blob upload-batch --account-name "$UI_STORAGE" --account-key "$KEY" --destination '$web' --source ui --overwrite true
+
+      - name: Health check (waits through cold start and DB resume)
+        run: |
+          for svc in passes analytics; do
+            FQDN=$(az containerapp show -g "$RG" -n "${PREFIX}-$svc" --query properties.configuration.ingress.fqdn -o tsv)
+            url="https://$FQDN/health"
+            echo "waiting for $svc at $url"
+            ok=""
+            for i in $(seq 1 30); do
+              code=$(curl -s -o /dev/null -w "%{http_code}" "$url" || echo 000)
+              echo "  attempt $i: HTTP $code"
+              [ "$code" = "200" ] && { ok=1; break; }
+              sleep 10
+            done
+            [ -n "$ok" ] || { echo "::error::$svc never returned 200"; exit 1; }
+          done
+          echo "both services healthy"
