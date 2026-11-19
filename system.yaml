@@ -1,77 +1,87 @@
-system:
-  name: LineSkip
-  description: >
-    Line-skip pass marketplace for Madrid nightlife, split into two independently
-    deployed services that each own their database (ADR-6, ADR-7).
-  version: "2.0.0"
+# yaml-language-server: $schema=./system.schema.json
+# LineSkip system description (Assignment 2, section 8a).
+# Names derive from `prefix` per the schema's conventions.
 
-services:
-  - name: passes
-    description: Auth and passes domain. Owns users, sessions, venues, pass products, purchases.
-    language: python
-    framework: flask
-    path: services/passes
-    port: 8000
-    spec: services/passes/openapi.yaml
-    database:
-      engine: sqlserver
-      name: passes
-      owned: true
-    environment:
-      - DATABASE_URL
-      - ANALYTICS_URL
-      - ANALYTICS_TIMEOUT_S
-      - CORS_ORIGINS
-      - APP_VERSION
-    depends_on:
-      - name: analytics
-        kind: http
-        required: false
-        note: >
-          Records a sales event on each purchase/refund. Degrades gracefully if
-          analytics is unavailable — the purchase still succeeds (ADR-6).
+student: amayer.ieu2024
+prefix: amayer-ieu2024
 
-  - name: analytics
-    description: Analytics domain. Owns the events table; ingests sales events and reports revenue.
-    language: python
-    framework: flask
-    path: services/analytics
-    port: 8000
-    spec: services/analytics/openapi.yaml
-    database:
-      engine: sqlserver
-      name: analytics
-      owned: true
-    environment:
-      - DATABASE_URL
-      - CORS_ORIGINS
-      - APP_VERSION
-    depends_on: []
-
-seams:
-  - from: passes
-    to: analytics
-    protocol: http
-    endpoint: POST /events
-    request: { venue_id: integer, event_type: string, amount_cents: integer }
-    response: { id: integer }
-    failure_mode: >
-      On timeout or connection error the passes service logs "[seam] analytics
-      unavailable" and continues; no sale is lost (ADR-6).
+# TODO: replace with the Storage account's "Primary endpoint" shown after
+# enabling Static website (format: https://<account>.z<NN>.web.core.windows.net/).
+public_url: https://amayerieu2024ui.REPLACE.web.core.windows.net/
 
 ui:
-  description: Static single-page UI that calls both services; deployed to Azure Storage static website.
   path: ui
-  config: ui/config.js
+  storage_account: amayerieu2024ui
   calls:
     - passes
     - analytics
 
-deployment:
-  local: docker compose up
-  cloud:
-    platform: azure-container-apps
-    scaling: { min_replicas: 0, max_replicas: 1 }
-    registry: ghcr.io
-    database: azure-sql-serverless
-    static_ui: azure-storage-static-website
+azure:
+  resource_group: rg-amayer-ieu2024
+  container_apps_environment: amayer-ieu2024-env
+  sql_server: amayer-ieu2024-sql
+  registry: ghcr.io/amayer2024
+
+services:
+  passes:
+    description: Auth and passes domain. Owns users, sessions, venues, pass products, purchases.
+    path: services/passes
+    openapi: services/passes/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/passes/migrations
+    env:
+      PORT:
+        description: HTTP port the service listens on.
+        default: 8000
+      DATABASE_URL:
+        description: SQL Server connection URL (mssql://user:password@host:1433/passes).
+        secret: true
+      ANALYTICS_URL:
+        description: Base URL of the analytics service, called on each purchase/refund.
+        default: http://analytics:8000
+      ANALYTICS_TIMEOUT_S:
+        description: Timeout in seconds for the call to analytics before giving up.
+        default: 2
+      CORS_ORIGINS:
+        description: Comma-separated browser origins allowed by CORS.
+        default: "*"
+      GIT_SHA:
+        description: Commit SHA reported by /health as the running version.
+        default: dev
+    calls:
+      - service: analytics
+        url_env: ANALYTICS_URL
+        endpoints:
+          - POST /events
+        timeout_s: 2
+        on_failure: >-
+          The purchase still succeeds; the sales event is dropped and logged
+          ("[seam] analytics unavailable"), so analytics revenue misses that sale (ADR-6).
+    azure:
+      container_app: amayer-ieu2024-passes
+      sql_database: amayer-ieu2024-passes-db
+
+  analytics:
+    description: Analytics domain. Owns the events table; ingests sales events and reports revenue.
+    path: services/analytics
+    openapi: services/analytics/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/analytics/migrations
+    env:
+      PORT:
+        description: HTTP port the service listens on.
+        default: 8000
+      DATABASE_URL:
+        description: SQL Server connection URL (mssql://user:password@host:1433/analytics).
+        secret: true
+      CORS_ORIGINS:
+        description: Comma-separated browser origins allowed by CORS.
+        default: "*"
+      GIT_SHA:
+        description: Commit SHA reported by /health as the running version.
+        default: dev
+    azure:
+      container_app: amayer-ieu2024-analytics
+      sql_database: amayer-ieu2024-analytics-db
