@@ -1,0 +1,77 @@
+system:
+  name: LineSkip
+  description: >
+    Line-skip pass marketplace for Madrid nightlife, split into two independently
+    deployed services that each own their database (ADR-6, ADR-7).
+  version: "2.0.0"
+
+services:
+  - name: passes
+    description: Auth and passes domain. Owns users, sessions, venues, pass products, purchases.
+    language: python
+    framework: flask
+    path: services/passes
+    port: 8000
+    spec: services/passes/openapi.yaml
+    database:
+      engine: sqlserver
+      name: passes
+      owned: true
+    environment:
+      - DATABASE_URL
+      - ANALYTICS_URL
+      - ANALYTICS_TIMEOUT_S
+      - CORS_ORIGINS
+      - APP_VERSION
+    depends_on:
+      - name: analytics
+        kind: http
+        required: false
+        note: >
+          Records a sales event on each purchase/refund. Degrades gracefully if
+          analytics is unavailable — the purchase still succeeds (ADR-6).
+
+  - name: analytics
+    description: Analytics domain. Owns the events table; ingests sales events and reports revenue.
+    language: python
+    framework: flask
+    path: services/analytics
+    port: 8000
+    spec: services/analytics/openapi.yaml
+    database:
+      engine: sqlserver
+      name: analytics
+      owned: true
+    environment:
+      - DATABASE_URL
+      - CORS_ORIGINS
+      - APP_VERSION
+    depends_on: []
+
+seams:
+  - from: passes
+    to: analytics
+    protocol: http
+    endpoint: POST /events
+    request: { venue_id: integer, event_type: string, amount_cents: integer }
+    response: { id: integer }
+    failure_mode: >
+      On timeout or connection error the passes service logs "[seam] analytics
+      unavailable" and continues; no sale is lost (ADR-6).
+
+ui:
+  description: Static single-page UI that calls both services; deployed to Azure Storage static website.
+  path: ui
+  config: ui/config.js
+  calls:
+    - passes
+    - analytics
+
+deployment:
+  local: docker compose up
+  cloud:
+    platform: azure-container-apps
+    scaling: { min_replicas: 0, max_replicas: 1 }
+    registry: ghcr.io
+    database: azure-sql-serverless
+    static_ui: azure-storage-static-website

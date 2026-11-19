@@ -5,7 +5,6 @@ the passes-owned behaviour; the cross-seam flow is covered by the integration te
 """
 import pytest
 
-from passes import repository
 from passes import service as passes
 
 
