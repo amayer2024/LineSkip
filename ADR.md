@@ -137,3 +137,86 @@ migration: migrations are forward-only and never edited once applied, so a mista
 new migration; because each service runs at most one replica, startup migrations never race; if a
 migration corrupts data on Azure, restore the database from Azure SQL's automated point-in-time
 backup and deploy the corrective migration.
+
+## 8. Deploying to Azure: serverless Container Apps, static website, serverless SQL
+Date: 2026-11-19
+Status: Decided
+Context: Assignment 2 §7 requires the two services deployed to Azure within the Azure for Students
+free credit, scaling to zero when idle, with the UI served as a static site and one database per
+service. It must cost almost nothing while idle and never need a credit card.
+Decision: Each service runs as an Azure Container App (Consumption plan, minimum 0 / maximum 1
+replica) in a shared environment `amayer-ieu2024-env`; the static UI is an Azure Storage static
+website (the `$web` container); the data lives in one Azure SQL logical server with two General
+Purpose serverless databases on the free offer (`--use-free-limit true`, fixed 60-minute auto-pause,
+32 GB). Every resource name derives from the prefix `amayer-ieu2024`, and everything is in one
+region (France Central) picked from the subscription's allowed-regions policy and used for all
+resources. Runtime config is environment variables: the connection string is a Container Apps
+secret, and the allowed CORS origin is the static website URL read from `CORS_ORIGINS`.
+Alternatives considered: App Service or AKS — rejected because App Service bills for an always-on
+plan and AKS is far too heavy, both breaking §7's scale-to-zero intent and the free credit. A
+container-run or managed Postgres — rejected because the app already speaks SQL Server (ADR-7) and
+Azure SQL serverless on the free offer fits the credit with no new dialect. Copying a classmate's
+region — rejected because the allowed-regions policy differs per subscription (France Central isn't
+on every list).
+Consequences: An idle system costs essentially nothing — the apps scale to zero and the databases
+auto-pause after 60 minutes. The price is cold starts: the first request after idle wakes the
+container and resumes the database (~1 minute), during which connections fail (error 40613, or a
+pymssql connection timeout) and Azure may answer the first request with 503 "App port is not ready".
+This is handled by the connect-with-retry/backoff in `db.py` (ADR-7) and tolerated by the UI. The
+free offer also fixes the auto-pause delay and size, so those flags must not be passed, and it isn't
+available in every region.
+
+## 9. CI/CD pipeline: OIDC deploy, SHA-tagged images, and what CI gates
+Date: 2026-11-19
+Status: Decided
+Context: Assignment 2 §5/§8 require CI that builds and pushes a SHA-tagged image per service, and a
+CD pipeline that deploys from `main` — authenticating to Azure without storing a cloud credential in
+the repository.
+Decision: GitHub Actions, split in two. `ci.yml` runs on branches and pull requests and as a
+reusable workflow (`workflow_call`): it lints (ruff), validates the specs (both OpenAPI documents
+and `system.yaml` against the provided `system.schema.json`), runs each service's tests against a
+real SQL Server service container behind a ≥70% coverage gate, then builds each image and pushes
+`ghcr.io/<owner>/lineskip-<service>:<sha>` — pushing only on `main`, with `provenance: false` so
+Azure can pull the image. `cd.yml` runs on push to `main`: it calls `ci.yml`, then a deploy job that
+authenticates to Azure by OIDC federation (a user-assigned managed identity with a federated
+credential — no stored secret), points each Container App at the SHA-tagged image, injects each
+`DATABASE_URL` from a GitHub secret, writes `ui/config.js` with the live service URLs and uploads
+`ui/` to `$web`, and fails the run unless `/health` returns 200 on both services after retries.
+CI's push trigger excludes `main` so the pipeline never runs twice.
+Alternatives considered: Store an Azure service-principal secret for `azure/login` — rejected because
+IE accounts can't create service principals and OIDC federation needs no stored secret at all.
+Deploy straight from CI — rejected because a separate CD workflow keeps deployment `main`-only and
+scoped to the `id-token: write` permission. A `latest` image tag — rejected because a per-commit SHA
+tag makes every running revision traceable to a commit and trivially rollback-able.
+Consequences: Every merge to `main` is a reproducible, commit-traceable deploy, and the pipeline's
+identity holds Contributor on the resource group only (least privilege for a student subscription).
+The footguns, all met during setup: the OIDC subject must be registered in both the repository-name
+and the numeric-ID form (GitHub presented the numeric form, and `azure/login` failed until it was
+added); new GHCR packages are private, so the first deploy couldn't pull the images until they were
+made public; and coverage is measured on the business-logic modules, not the Flask glue (continuing
+ADR-4), so the 70% figure stays meaningful rather than inflated by routing boilerplate.
+
+## 10. Deliberately leaving the service-to-service seam unauthenticated
+Date: 2026-11-19
+Status: Decided
+Context: Once the domains are separate services, the Analytics service needs external ingress because
+the browser dashboard reads its `GET /analytics/*` endpoints directly. Its `POST /events` — the
+write that the Passes service makes across the seam on each purchase/refund — shares that same public
+ingress. I had to decide whether to authenticate the seam.
+Decision: For this assignment Analytics accepts `POST /events` with no caller authentication; the
+seam is trusted by network reachability alone. There is no shared secret, token, or managed-identity
+check on the cross-service call.
+Alternatives considered: Put Analytics on internal-only ingress — rejected because the same service
+also serves the public dashboard reads the browser needs, so it has to stay externally reachable. A
+shared secret or bearer token on `POST /events` — deferred, not rejected on merit: it is the correct
+next step, but it adds a secret to manage and explain for no new insight into the modularization
+goal this assignment is graded on. mTLS or managed-identity auth between the two apps — out of scope
+for the timeline and the free credit.
+Consequences: Anyone who discovers the Analytics URL can POST a fabricated sales event and skew the
+revenue reports; there is no integrity guarantee on what the seam carries (compounding the
+deliberate loss of the cross-seam foreign key in ADR-7). The blast radius is contained: Analytics
+owns only its `events` table and cannot reach the Passes data or auth, so the worst case is wrong
+analytics, not compromised sales or accounts. The fix when this matters is isolated to one service
+and the single seam client — split Analytics into a public read API and an internal ingest that
+requires a shared secret, or restrict `POST /events` to the Container Apps environment's internal
+network.
