@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=./system.schema.json
+# LineSkip system description (Assignment 2, section 8a).
+# Names derive from `prefix` per the schema's conventions.
+
+student: amayer.ieu2024
+prefix: amayer-ieu2024
+
+public_url: https://amayerieu2024ui.z28.web.core.windows.net/
+
+ui:
+  path: ui
+  storage_account: amayerieu2024ui
+  calls:
+    - passes
+    - analytics
+
+azure:
+  resource_group: rg-amayer-ieu2024
+  container_apps_environment: amayer-ieu2024-env
+  sql_server: amayer-ieu2024-sql
+  registry: ghcr.io/amayer2024
+
+services:
+  passes:
+    description: Auth and passes domain. Owns users, sessions, venues, pass products, purchases.
+    path: services/passes
+    openapi: services/passes/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/passes/migrations
+    env:
+      PORT:
+        description: HTTP port the service listens on.
+        default: 8000
+      DATABASE_URL:
+        description: SQL Server connection URL (mssql://user:password@host:1433/passes).
+        secret: true
+      ANALYTICS_URL:
+        description: Base URL of the analytics service, called on each purchase/refund.
+        default: http://analytics:8000
+      ANALYTICS_TIMEOUT_S:
+        description: Timeout in seconds for the call to analytics before giving up.
+        default: 2
+      CORS_ORIGINS:
+        description: Comma-separated browser origins allowed by CORS.
+        default: "*"
+      GIT_SHA:
+        description: Commit SHA reported by /health as the running version.
+        default: dev
+    calls:
+      - service: analytics
+        url_env: ANALYTICS_URL
+        endpoints:
+          - POST /events
+        timeout_s: 2
+        on_failure: >-
+          The purchase still succeeds; the sales event is dropped and logged
+          ("[seam] analytics unavailable"), so analytics revenue misses that sale (ADR-6).
+    azure:
+      container_app: amayer-ieu2024-passes
+      sql_database: amayer-ieu2024-passes-db
+
+  analytics:
+    description: Analytics domain. Owns the events table; ingests sales events and reports revenue.
+    path: services/analytics
+    openapi: services/analytics/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/analytics/migrations
+    env:
+      PORT:
+        description: HTTP port the service listens on.
+        default: 8000
+      DATABASE_URL:
+        description: SQL Server connection URL (mssql://user:password@host:1433/analytics).
+        secret: true
+      CORS_ORIGINS:
+        description: Comma-separated browser origins allowed by CORS.
+        default: "*"
+      GIT_SHA:
+        description: Commit SHA reported by /health as the running version.
+        default: dev
+    azure:
+      container_app: amayer-ieu2024-analytics
+      sql_database: amayer-ieu2024-analytics-db

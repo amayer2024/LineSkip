@@ -2,15 +2,58 @@ name: CI
 
 on:
   push:
+    branches-ignore: [main]   # on main, CD calls this workflow instead (no double run)
   pull_request:
+  workflow_call:              # invoked by cd.yml on push to main
 
 jobs:
-  # Lint/test each service. A failure here fails the pipeline and blocks images.
+  # --- Static checks: real errors, undefined names, unused imports ----------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.17.5
+      - name: Lint (syntax errors + pyflakes)
+        run: ruff check --select E9,F services/
+
+  # --- Spec validation: OpenAPI docs + system.yaml --------------------------
+  specs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install openapi-spec-validator==0.7.1 jsonschema==4.23.0 pyyaml==6.0.2
+      - name: Validate OpenAPI documents
+        run: |
+          python -m openapi_spec_validator services/passes/openapi.yaml
+          python -m openapi_spec_validator services/analytics/openapi.yaml
+      - name: Validate system.yaml (against schema when present)
+        run: python scripts/ci/validate_system.py
+
+  # --- Tests: each service against a real SQL Server, coverage gate >=70% ----
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         service: [passes, analytics]
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: L1neSkipCIpass9
+        ports:
+          - 1433:1433
+    env:
+      MSSQL_SA_PASSWORD: L1neSkipCIpass9
+      # Tests connect as sa to a per-service database (login hardening is a
+      # docker-compose/Azure concern; CI only needs a working schema to test).
+      DATABASE_URL: mssql://sa:L1neSkipCIpass9@127.0.0.1:1433/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,13 +61,15 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r services/${{ matrix.service }}/requirements.txt
-      - name: Run tests
+      - name: Wait for SQL Server and create the database
+        run: python scripts/ci/wait_for_sqlserver.py ${{ matrix.service }}
+      - name: Run tests with coverage
         working-directory: services/${{ matrix.service }}
         run: python -m pytest -q
 
-  # Build every service image on every push/PR; publish to GHCR only from main.
+  # --- Build images; publish to GHCR only from main -------------------------
   images:
-    needs: test
+    needs: [lint, specs, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,3 +96,4 @@ jobs:
           context: services/${{ matrix.service }}
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: ghcr.io/${{ env.OWNER }}/lineskip-${{ matrix.service }}:${{ github.sha }}
+          provenance: false

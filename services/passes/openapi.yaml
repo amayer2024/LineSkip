@@ -1,0 +1,204 @@
+openapi: 3.0.3
+info:
+  title: LineSkip Passes Service
+  version: "1.0.0"
+  description: >
+    Auth + passes domain. Owns users, sessions, venues, pass products and purchases.
+    On each purchase/refund it records an event on the analytics service over HTTP (the seam).
+servers:
+  - url: http://localhost:8001
+    description: Local (docker compose)
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+    Health:
+      type: object
+      properties:
+        status: { type: string, example: ok }
+        db: { type: string, example: ok }
+        version: { type: string, example: "dev" }
+      required: [status, db, version]
+    Venue:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        city: { type: string }
+        address: { type: string }
+        country: { type: string }
+        created_at: { type: string }
+      required: [id, name, city, address]
+    PassProduct:
+      type: object
+      properties:
+        id: { type: integer }
+        venue_id: { type: integer }
+        type: { type: string, enum: [line_skip, cover] }
+        name: { type: string }
+        price_cents: { type: integer }
+        quantity_total: { type: integer }
+        quantity_sold: { type: integer }
+        valid_date: { type: string }
+        created_at: { type: string }
+      required: [id, venue_id, type, name, price_cents, quantity_total, quantity_sold]
+    Purchase:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        pass_product_id: { type: integer }
+        venue_id: { type: integer }
+        price_cents_paid: { type: integer }
+        status: { type: string, enum: [active, redeemed, refunded] }
+        redemption_code: { type: string }
+        purchased_at: { type: string }
+        redeemed_at: { type: string, nullable: true }
+      required: [id, pass_product_id, venue_id, price_cents_paid, status, redemption_code]
+    Credentials:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+      required: [email, password]
+paths:
+  /health:
+    get:
+      summary: Service and database health
+      responses:
+        "200":
+          description: Service can read and write its database
+          content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } }
+        "503":
+          description: Database unreachable
+          content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } }
+  /venues:
+    get:
+      summary: List all venues
+      responses:
+        "200":
+          description: Venues
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Venue' } }
+  /venues/{venue_id}/passes:
+    get:
+      summary: List a venue's pass products
+      parameters:
+        - { name: venue_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Pass products
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PassProduct' } }
+        "404":
+          description: Venue not found
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  /auth/register:
+    post:
+      summary: Register a user
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Credentials' } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { type: object, properties: { id: { type: integer } }, required: [id] } } }
+        "400":
+          description: Invalid or duplicate
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  /auth/login:
+    post:
+      summary: Log in and receive a session token
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Credentials' } } }
+      responses:
+        "200":
+          description: Token
+          content: { application/json: { schema: { type: object, properties: { token: { type: string } }, required: [token] } } }
+        "401":
+          description: Bad credentials
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  /auth/me:
+    get:
+      summary: The authenticated user's id
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: User id
+          content: { application/json: { schema: { type: object, properties: { user_id: { type: integer } }, required: [user_id] } } }
+        "401":
+          description: Not authenticated
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  /passes/purchase:
+    post:
+      summary: Buy one unit of a pass product
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { pass_product_id: { type: integer } }, required: [pass_product_id] }
+      responses:
+        "201":
+          description: Purchase
+          content: { application/json: { schema: { $ref: '#/components/schemas/Purchase' } } }
+        "400":
+          description: Sold out or unknown product
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+        "401":
+          description: Not authenticated
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  /passes/mine:
+    get:
+      summary: The caller's purchases
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Purchases
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Purchase' } }
+        "401":
+          description: Not authenticated
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  /passes/redeem:
+    post:
+      summary: Redeem a pass by its code (door scan; code is the credential)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { code: { type: string } }, required: [code] }
+      responses:
+        "200":
+          description: Updated purchase
+          content: { application/json: { schema: { $ref: '#/components/schemas/Purchase' } } }
+        "400":
+          description: Invalid code or already used
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  /passes/{purchase_id}/refund:
+    post:
+      summary: Refund the caller's own active pass
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: purchase_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Updated purchase
+          content: { application/json: { schema: { $ref: '#/components/schemas/Purchase' } } }
+        "400":
+          description: Not refundable
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+        "401":
+          description: Not authenticated
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }

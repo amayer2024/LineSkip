@@ -1,0 +1,98 @@
+openapi: 3.0.3
+info:
+  title: LineSkip Analytics Service
+  version: "1.0.0"
+  description: >
+    Owns the events table. Ingests sales events from the passes service over HTTP and
+    reports revenue. Reads and writes only its own database.
+servers:
+  - url: http://localhost:8002
+    description: Local (docker compose)
+components:
+  schemas:
+    Health:
+      type: object
+      properties:
+        status: { type: string, example: ok }
+        db: { type: string, example: ok }
+        version: { type: string, example: "dev" }
+      required: [status, db, version]
+    Event:
+      description: One sales event, as the passes service sends it across the seam.
+      type: object
+      properties:
+        venue_id: { type: integer }
+        event_type: { type: string, example: purchase }
+        amount_cents: { type: integer }
+      required: [venue_id, event_type, amount_cents]
+    VenueRevenue:
+      type: object
+      properties:
+        venue_id: { type: integer }
+        revenue_cents: { type: integer }
+      required: [venue_id, revenue_cents]
+    DayRevenue:
+      type: object
+      properties:
+        day: { type: string, example: "2026-11-19" }
+        revenue_cents: { type: integer }
+      required: [day, revenue_cents]
+paths:
+  /health:
+    get:
+      summary: Service and database health
+      responses:
+        "200":
+          description: Healthy
+          content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } }
+        "503":
+          description: Database unreachable
+          content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } }
+  /events:
+    post:
+      summary: Record one sales event (called by the passes service across the seam)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } }
+      responses:
+        "201":
+          description: Event recorded
+          content: { application/json: { schema: { type: object, properties: { id: { type: integer } }, required: [id] } } }
+  /analytics/revenue:
+    get:
+      summary: Total revenue in cents
+      responses:
+        "200":
+          description: Total
+          content:
+            application/json:
+              schema: { type: object, properties: { total_revenue_cents: { type: integer } }, required: [total_revenue_cents] }
+  /analytics/revenue/by-venue:
+    get:
+      summary: Revenue per venue
+      responses:
+        "200":
+          description: Rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/VenueRevenue' } }
+  /analytics/venues/top:
+    get:
+      summary: Highest-grossing venues
+      parameters:
+        - { name: n, in: query, required: false, schema: { type: integer, default: 3, minimum: 1 } }
+      responses:
+        "200":
+          description: Rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/VenueRevenue' } }
+  /analytics/revenue/by-day:
+    get:
+      summary: Revenue per day
+      responses:
+        "200":
+          description: Rows
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/DayRevenue' } }

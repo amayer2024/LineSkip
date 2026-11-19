@@ -90,6 +90,6 @@ def test_seed_venues_populates_an_empty_db(conn):
 
 def test_seed_venues_is_idempotent(conn):
     repository.seed_venues(conn)
-    count = conn.execute("SELECT COUNT(*) FROM venues").fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) AS n FROM venues").fetchone()["n"]
     repository.seed_venues(conn)  # second call must be a no-op
-    assert conn.execute("SELECT COUNT(*) FROM venues").fetchone()[0] == count
+    assert conn.execute("SELECT COUNT(*) AS n FROM venues").fetchone()["n"] == count
