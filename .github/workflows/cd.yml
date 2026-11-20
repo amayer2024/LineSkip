@@ -39,23 +39,10 @@ jobs:
       - name: Ensure containerapp extension
         run: az extension add --name containerapp --upgrade --only-show-errors
 
-      - name: Deploy analytics
+      - name: Deploy services (set DB secret, roll out image, retry on secret propagation)
         run: |
-          SQL_FQDN="${PREFIX}-sql.database.windows.net"
-          az containerapp secret set -g "$RG" -n "${PREFIX}-analytics" \
-            --secrets "db-url=mssql://analytics_user:${ANALYTICS_DB_PASSWORD}@${SQL_FQDN}:1433/${PREFIX}-analytics-db"
-          az containerapp update -g "$RG" -n "${PREFIX}-analytics" \
-            --image "ghcr.io/${OWNER}/lineskip-analytics:${SHA}" \
-            --set-env-vars "DATABASE_URL=secretref:db-url" "GIT_SHA=${SHA}"
-
-      - name: Deploy passes
-        run: |
-          SQL_FQDN="${PREFIX}-sql.database.windows.net"
-          az containerapp secret set -g "$RG" -n "${PREFIX}-passes" \
-            --secrets "db-url=mssql://passes_user:${PASSES_DB_PASSWORD}@${SQL_FQDN}:1433/${PREFIX}-passes-db"
-          az containerapp update -g "$RG" -n "${PREFIX}-passes" \
-            --image "ghcr.io/${OWNER}/lineskip-passes:${SHA}" \
-            --set-env-vars "DATABASE_URL=secretref:db-url" "GIT_SHA=${SHA}"
+          bash scripts/cd/deploy_service.sh analytics analytics_user "$ANALYTICS_DB_PASSWORD"
+          bash scripts/cd/deploy_service.sh passes    passes_user    "$PASSES_DB_PASSWORD"
 
       - name: Write ui/config.js and upload to the static website
         run: |
