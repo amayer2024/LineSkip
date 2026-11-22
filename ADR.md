@@ -220,3 +220,39 @@ analytics, not compromised sales or accounts. The fix when this matters is isola
 and the single seam client — split Analytics into a public read API and an internal ingest that
 requires a shared secret, or restrict `POST /events` to the Container Apps environment's internal
 network.
+
+## 11. Enforcing pass validity at purchase (A1 feedback)
+Date: 2026-11-22
+Status: Decided
+Context: Assignment 1 feedback noted that `valid_date` is stored on `pass_products` but never
+enforced — the seeded passes dated 2026-10-10 could still be bought after that date. A stored-but-
+ignored constraint is a latent bug and an easy comprehension-check target.
+Decision: `purchase()` now rejects a product whose `valid_date` is before today
+(`PassError("pass has expired")`), a single ISO-date string comparison. Seeding uses a date two
+months out so freshly seeded data is buyable, and migration `004_bump_pass_valid_dates.sql` updates
+any already-seeded past-dated rows to a future date so existing live data stays purchasable.
+Alternatives considered: leave it informational and only record the choice in an ADR — rejected,
+because the feedback is right that an unenforced constraint is a real gap. Enforce without migrating
+existing rows — rejected, because it would make every already-seeded pass on the live Azure database
+unbuyable, including the migration-demo data.
+Consequences: expired passes can no longer be sold; the rule is trivial to explain and test (a new
+test buys an expired pass and asserts rejection, and the test helpers now seed future dates). The
+cost is that validity is a date-only check with no per-event timezone cutoff, which is enough here.
+
+## 12. Reporting net revenue, not just gross (A1 feedback)
+Date: 2026-11-22
+Status: Decided
+Context: Assignment 1 feedback noted the Analytics domain stays thin — refund events are recorded
+through the seam but no report uses them, so every revenue figure includes refunded passes and there
+is no net view.
+Decision: add a net-revenue report that subtracts refund events from purchase events
+(`SUM(CASE WHEN event_type='purchase' THEN amount_cents WHEN event_type='refund' THEN -amount_cents
+END)`), exposed at `GET /analytics/revenue/net`. The existing total / by-venue / top / by-day reports
+stay gross (purchases only) and are now explicitly the gross view.
+Alternatives considered: change the existing `total_revenue` to be net — rejected, because it would
+silently change the meaning of an endpoint and its tests; gross and net are both legitimate and a
+caller may want either. Delete refund events — rejected, because they are exactly the data the net
+view needs.
+Consequences: the refund events the seam already records are finally used. Net revenue reads only the
+`events` table, so Analytics stays independent of the Passes schema (ADR-2). A test records two
+purchases and a refund and asserts gross 3500 vs net 1500.

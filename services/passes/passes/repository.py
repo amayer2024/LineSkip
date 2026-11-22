@@ -3,7 +3,7 @@
 Only queries and row access live here — no business rules (those are in service.py) and no Flask.
 Keeping SQL in one place makes the service logic easy to read and test.
 """
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 
 def _now_iso():
@@ -118,13 +118,17 @@ _SEED = [
 ]
 
 
-def seed_venues(conn, valid_date="2026-10-10"):
+def seed_venues(conn, valid_date=None):
     """Insert sample Madrid venues and pass products, but only if no venues exist yet.
 
     Idempotent: safe to call on every startup (deployment contract §7 forbids manual setup).
     """
     if conn.execute("SELECT TOP 1 1 AS present FROM venues").fetchone() is not None:
         return
+    if valid_date is None:
+        # Two months out, so freshly seeded passes are actually buyable now that
+        # valid_date is enforced at purchase.
+        valid_date = (date.today() + timedelta(days=60)).isoformat()
     now = _now_iso()
     for name, address, products in _SEED:
         cur = conn.execute(

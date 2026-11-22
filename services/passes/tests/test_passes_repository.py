@@ -3,7 +3,11 @@
 These cover the read helpers and the startup seed that the service tests reach only
 indirectly, using the same per-test temp SQLite `conn` fixture.
 """
+from datetime import date, timedelta
+
 from passes import repository
+
+FUTURE = (date.today() + timedelta(days=60)).isoformat()
 
 
 def _venue(conn, name, city="Madrid", address="A"):
@@ -19,8 +23,8 @@ def _product(conn, venue_id, price_cents, name="P"):
     cur = conn.execute(
         """INSERT INTO pass_products
                (venue_id, type, name, price_cents, quantity_total, quantity_sold, valid_date, created_at)
-           VALUES (?, 'line_skip', ?, ?, 10, 0, '2026-10-10', 'now')""",
-        (venue_id, name, price_cents),
+           VALUES (?, 'line_skip', ?, ?, 10, 0, ?, 'now')""",
+        (venue_id, name, price_cents, FUTURE),
     )
     conn.commit()
     return cur.lastrowid

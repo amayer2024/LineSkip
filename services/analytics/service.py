@@ -30,6 +30,11 @@ def total_revenue(conn):
     return repository.sum_revenue(conn)
 
 
+def net_revenue(conn):
+    """Total revenue net of refunds, in cents (0 when there are none)."""
+    return repository.net_revenue(conn)
+
+
 def revenue_per_venue(conn):
     """Revenue per venue: [{'venue_id': .., 'revenue_cents': ..}, ...]."""
     rows = repository.revenue_by_venue(conn)

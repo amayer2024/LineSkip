@@ -58,3 +58,15 @@ def revenue_by_day(conn):
            GROUP BY SUBSTRING(occurred_at, 1, 10)
            ORDER BY day"""
     ).fetchall()
+
+
+def net_revenue(conn):
+    """Revenue net of refunds: purchase amounts minus refund amounts, over all events.
+    Unlike sum_revenue (gross, purchases only) this subtracts refund events."""
+    return conn.execute(
+        """SELECT COALESCE(SUM(CASE
+                       WHEN event_type = 'purchase' THEN amount_cents
+                       WHEN event_type = 'refund'   THEN -amount_cents
+                       ELSE 0 END), 0) AS total
+             FROM events"""
+    ).fetchone()["total"]
