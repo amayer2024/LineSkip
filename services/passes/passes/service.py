@@ -8,7 +8,7 @@ Purchase lifecycle (status is a small state machine):
 Only 'active' purchases can transition; 'redeemed' and 'refunded' are terminal.
 """
 import secrets
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import analytics_client
 from passes import repository
@@ -36,6 +36,8 @@ def purchase(conn, user_id, pass_product_id):
     product = repository.get_pass_product(conn, pass_product_id)
     if product is None:
         raise PassError("pass product not found")
+    if product["valid_date"] < date.today().isoformat():
+        raise PassError("pass has expired")
 
     # Atomic oversell guard: only proceed if a unit was actually claimed.
     if not repository.try_claim_unit(conn, pass_product_id):

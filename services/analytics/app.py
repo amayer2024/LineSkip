@@ -67,6 +67,15 @@ def create_app():
             conn.close()
         return jsonify(total_revenue_cents=total)
 
+    @app.get("/analytics/revenue/net")
+    def net_revenue():
+        conn = db.get_connection()
+        try:
+            total = analytics_service.net_revenue(conn)
+        finally:
+            conn.close()
+        return jsonify(net_revenue_cents=total)
+
     @app.get("/analytics/revenue/by-venue")
     def revenue_by_venue():
         conn = db.get_connection()

@@ -67,6 +67,15 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { total_revenue_cents: { type: integer } }, required: [total_revenue_cents] }
+  /analytics/revenue/net:
+    get:
+      summary: Total revenue net of refunds, in cents
+      responses:
+        "200":
+          description: Net total
+          content:
+            application/json:
+              schema: { type: object, properties: { net_revenue_cents: { type: integer } }, required: [net_revenue_cents] }
   /analytics/revenue/by-venue:
     get:
       summary: Revenue per venue

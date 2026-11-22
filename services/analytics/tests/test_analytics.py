@@ -21,3 +21,11 @@ def test_total_revenue_sums_purchases(conn):
     analytics.record_event(conn, 1, "purchase", 1500)
     analytics.record_event(conn, 2, "purchase", 5000)
     assert analytics.total_revenue(conn) == 6500
+
+
+def test_net_revenue_subtracts_refunds(conn):
+    analytics.record_event(conn, 1, "purchase", 2000)
+    analytics.record_event(conn, 1, "purchase", 1500)
+    analytics.record_event(conn, 1, "refund", 2000)
+    assert analytics.total_revenue(conn) == 3500   # gross: purchase events only
+    assert analytics.net_revenue(conn) == 1500     # net: minus the refund

@@ -60,5 +60,13 @@ def test_verify_session_rejects_expired_token(conn):
     past = (auth._now() - timedelta(seconds=1)).isoformat()
     conn.execute("UPDATE sessions SET expires_at = ? WHERE token = ?", (past, token))
     conn.commit()
+    # verify_session rejects it WITHOUT writing (a GET must not write): the row is still there.
     assert auth.verify_session(conn, token) is None
-    assert conn.execute("SELECT 1 AS present FROM sessions WHERE token = ?", (token,)).fetchone() is None
+    assert conn.execute(
+        "SELECT 1 AS present FROM sessions WHERE token = ?", (token,)
+    ).fetchone() is not None
+    # A subsequent login (a write path) is where expired sessions get purged.
+    auth.login(conn, "user@madrid.es", "supersecret")
+    assert conn.execute(
+        "SELECT 1 AS present FROM sessions WHERE token = ?", (token,)
+    ).fetchone() is None

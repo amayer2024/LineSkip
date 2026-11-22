@@ -50,6 +50,11 @@ def login(conn, email, password):
     ).fetchone()
     if row is None or not check_password_hash(row["password_hash"], password or ""):
         raise AuthError("invalid email or password")
+    # Purge this user's expired sessions here, on a write path -- verify_session (a read) must not write.
+    conn.execute(
+        "DELETE FROM sessions WHERE user_id = ? AND expires_at < ?", (row["id"], _now().isoformat())
+    )
+    conn.commit()
     return _create_session(conn, row["id"])
 
 
@@ -74,7 +79,7 @@ def verify_session(conn, token):
     if row is None:
         return None
     if datetime.fromisoformat(row["expires_at"]) < _now():
-        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
-        conn.commit()
+        # Read-only: an expired token is simply rejected. Expired rows are cleaned up on
+        # login (a write path); a GET must not write.
         return None
     return row["user_id"]

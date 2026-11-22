@@ -156,8 +156,9 @@ Coverage is measured on the modules that hold the logic — `service`, `reposito
 the thin Flask routes, so the figure reflects real behaviour rather than routing glue. Each test
 drives one branch of the domain logic (sold-out guard, double-redeem rejection, refund ownership,
 empty-report, seed idempotency, expired-token purge). In CI these run against a real SQL Server, so
-the SQL is exercised exactly as it runs in production. Current result: 26 passes-service tests at 99%
-line coverage, analytics at 100%, gated at ≥70%.
+the SQL is exercised exactly as it runs in production. Current result: 28 passes-service tests at 99% line coverage
+(including a concurrency test that proves the oversell guard is atomic under simultaneous
+purchases), analytics at 100%, gated at ≥70%.
 
 ---
 
